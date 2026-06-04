@@ -1,0 +1,53 @@
+{
+  "name": "css-comments-to-json",
+  "version": "0.1.0",
+  "description": "Generate styleguide JSON data from CSS comments.",
+  "type": "module",
+  "license": "MIT",
+  "author": "masizime",
+  "sideEffects": false,
+  "bin": {
+    "css-comments-to-json": "./src/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/cli.js && node --check src/index.js && npm test",
+    "prepublishOnly": "npm run check"
+  },
+  "keywords": [
+    "css",
+    "comments",
+    "json",
+    "cli",
+    "styleguide",
+    "documentation",
+    "hologram",
+    "kss",
+    "eleventy",
+    "nunjucks",
+    "ssg",
+    "static-site-generator"
+  ],
+  "dependencies": {
+    "glob": "^13.0.6"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tamshow/css-comments-to-json.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tamshow/css-comments-to-json/issues"
+  },
+  "homepage": "https://github.com/tamshow/css-comments-to-json#readme"
+}

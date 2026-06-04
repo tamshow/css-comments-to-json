@@ -1,0 +1,15 @@
+/*
+* @sg-category Component
+* @sg-name Button
+* @sg-description Button component.
+* @sg-table
+* | Class | Description |
+* |-------|-------------|
+* | c-button | Button |
+* @sg-example
+<a class="c-button" href="#">Button</a>
+*/
+
+.c-button {
+  display: inline-flex;
+}
