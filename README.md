@@ -195,6 +195,23 @@ const result = await generateStyleguideData({
 console.log(result.warnings);
 ```
 
+## Notes
+
+This package extracts `@sg-` tags from CSS-compatible block comments (`/* ... */`). It can also be used with SCSS or PostCSS source files as long as the comments use that format.
+
+```sh
+npx css-comments-to-json \
+  --input "src/**/*.{css,scss,pcss}" \
+  --output "src/_data" \
+  --prefix styleguide
+```
+
+SCSS line comments such as `// @sg-name` are not parsed.
+
+The parser is intentionally lightweight. It reports warnings for incomplete comment blocks, but it does not validate Markdown table syntax. Table content is passed through as text.
+
+Custom project-specific tags are not supported yet. The current implementation supports the documented `@sg-` tags only.
+
 ## Eleventy
 
 Use the CLI before Eleventy builds:
@@ -400,6 +417,23 @@ const result = await generateStyleguideData({
 
 console.log(result.warnings);
 ```
+
+### 補足
+
+このパッケージは、CSS 互換のブロックコメント（`/* ... */`）から `@sg-` タグを抽出します。そのため、SCSS や PostCSS 用のファイルでも、この形式のコメントが書かれていれば利用できます。
+
+```sh
+npx css-comments-to-json \
+  --input "src/**/*.{css,scss,pcss}" \
+  --output "src/_data" \
+  --prefix styleguide
+```
+
+SCSS の `// @sg-name` のような行コメントはパース対象外です。
+
+パーサは意図的に軽量にしています。不完全なコメントブロックには warning を出しますが、Markdown テーブルの構文までは検証しません。テーブルの内容は文字列としてそのまま出力します。
+
+プロジェクト固有の独自タグは、現時点では未対応です。現在は README に記載している `@sg-` タグのみをサポートしています。
 
 ### Eleventy で使う
 

@@ -1,13 +1,13 @@
 {
   "name": "css-comments-to-json",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generate styleguide JSON data from CSS comments.",
   "type": "module",
   "license": "MIT",
   "author": "masizime",
   "sideEffects": false,
   "bin": {
-    "css-comments-to-json": "./src/cli.js"
+    "css-comments-to-json": "src/cli.js"
   },
   "exports": {
     ".": "./src/index.js"
