@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
   collectStyleguideData,
+  createOutputFiles,
   generateStyleguideData,
   parseStyleguideComments,
+  slugify,
 } from '../src/index.js';
 
 const execFileAsync = promisify(execFile);
@@ -140,6 +142,124 @@ test('generateStyleguideData writes category JSON files', async () => {
 
   assert.equal(result.outputFiles.length, 1);
   assert.equal(output[0].name, 'CTA');
+});
+
+test('slugify keeps non-ASCII letters and numbers', () => {
+  assert.equal(slugify('Foo Bar'), 'foo-bar');
+  assert.equal(slugify('主ボタン'), '主ボタン');
+  assert.equal(slugify('ボタン 一覧'), 'ボタン-一覧');
+});
+
+test('parseStyleguideComments keeps non-ASCII component ids and categories', () => {
+  const parsed = parseStyleguideComments(
+    `/*\n* @sg-category ボタン\n* @sg-name 主ボタン\n*/`,
+  );
+
+  assert.equal(parsed['ボタン'][0].id, '主ボタン');
+
+  const outputFiles = createOutputFiles(parsed, { prefix: 'sg' });
+  assert.equal(path.basename(outputFiles[0].filePath), 'sgボタン.json');
+});
+
+test('parseStyleguideComments recognizes tags on the comment start line', () => {
+  const parsed = parseStyleguideComments(
+    `/* @sg-category Base\n* @sg-name Alert\n*/`,
+  );
+
+  assert.equal(parsed.Base[0].name, 'Alert');
+});
+
+test('parseStyleguideComments warns on unknown @sg- tags', () => {
+  const warnings = [];
+  const parsed = parseStyleguideComments(
+    `/*\n* @sg-category Component\n* @sg-name CTA\n* @sg-exsample\n<div>lost</div>\n*/`,
+    { warnings },
+  );
+
+  assert.equal(parsed.Component[0].examples, undefined);
+  assert.equal(
+    warnings.some((warning) =>
+      warning.message.includes('unknown tag "@sg-exsample"'),
+    ),
+    true,
+  );
+});
+
+test('parseStyleguideComments supports multi-line descriptions', () => {
+  const parsed = parseStyleguideComments(
+    `/*\n* @sg-category Component\n* @sg-name CTA\n* @sg-description line one.\n* line two.\n*/`,
+  );
+
+  assert.equal(parsed.Component[0].description, 'line one.\nline two.');
+});
+
+test('createOutputFiles warns on output filename collisions', () => {
+  const warnings = [];
+  const categories = {
+    Base: [{ name: 'A', id: 'a', children: [] }],
+    base: [{ name: 'B', id: 'b', children: [] }],
+  };
+
+  const outputFiles = createOutputFiles(categories, {
+    prefix: 'sg',
+    warnings,
+  });
+
+  assert.equal(outputFiles.length, 2);
+  assert.equal(
+    warnings.some((warning) =>
+      warning.message.includes('output file collision'),
+    ),
+    true,
+  );
+});
+
+test('collectStyleguideData warns when no files match the input glob', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sg-data-'));
+
+  const result = await collectStyleguideData({
+    cwd: tmpDir,
+    input: 'does-not-exist/**/*.css',
+  });
+
+  assert.equal(result.files.length, 0);
+  assert.equal(
+    result.warnings.some((warning) =>
+      warning.message.includes('no files matched'),
+    ),
+    true,
+  );
+});
+
+test('CLI --strict exits with code 1 when warnings are reported', async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sg-data-'));
+  const cssDir = path.join(tmpDir, 'styles');
+  await fs.mkdir(cssDir, { recursive: true });
+  await fs.writeFile(
+    path.join(cssDir, 'alert.css'),
+    `/*\n* @sg-name Alert\n*/\n`,
+  );
+
+  const cliPath = path.resolve(currentDir, '../src/cli.js');
+
+  await assert.rejects(
+    execFileAsync('node', [
+      cliPath,
+      '--input',
+      'styles/**/*.css',
+      '--output',
+      'data',
+      '--cwd',
+      tmpDir,
+      '--strict',
+      '--dry-run',
+    ]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /\[strict\]/);
+      return true;
+    },
+  );
 });
 
 test('CLI can load options from a config file', async () => {

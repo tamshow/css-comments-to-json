@@ -15,8 +15,8 @@ export const defaultOptions = {
 export function slugify(value) {
   return String(value)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export function removeStyleAttributes(html) {
@@ -88,10 +88,23 @@ function getCommentStartLine(content, commentStartIndex) {
 
 function normalizeCommentLines(comment) {
   return comment
+    .replace(/^\/\*+/, '')
+    .replace(/\*+\/$/, '')
     .split('\n')
     .map((line) => line.trim().replace(/^\*\s?/, ''))
     .filter((line) => line !== '*/' && line !== '/');
 }
+
+const KNOWN_TAGS = new Set([
+  '@sg-category',
+  '@sg-name',
+  '@sg-sub-name',
+  '@sg-description',
+  '@sg-example',
+  '@sg-markup',
+  '@sg-variant',
+  '@sg-table',
+]);
 
 function getOrCreateComponent(categoryMap, category, name, source) {
   const parentId = slugify(name);
@@ -126,6 +139,7 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
   let currentMarkup = [];
   let currentTable = [];
   let inTableBlock = false;
+  let descriptionTarget = null;
   let category = 'default';
   let hasCategory = false;
   let hasName = false;
@@ -142,17 +156,21 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
   }
 
   for (const line of lines) {
-    if (line.startsWith('@sg-category')) {
-      flushBlocks();
-      category = line.substring('@sg-category'.length).trim() || 'default';
-      hasCategory = true;
-    } else if (line.startsWith('@sg-name')) {
-      flushBlocks();
-      const parentName = line.substring('@sg-name'.length).trim();
+    const tagMatch = line.match(/^(@sg-[a-z][a-z-]*)\s*(.*)$/);
+    const tag = tagMatch && KNOWN_TAGS.has(tagMatch[1]) ? tagMatch[1] : null;
+    const value = tag ? tagMatch[2].trim() : '';
 
-      if (!parentName) {
+    if (tag) {
+      flushBlocks();
+      descriptionTarget = null;
+    }
+
+    if (tag === '@sg-category') {
+      category = value || 'default';
+      hasCategory = true;
+    } else if (tag === '@sg-name') {
+      if (!value) {
         pushWarning(warnings, '@sg-name is empty', warningSource);
-        inTableBlock = false;
         continue;
       }
 
@@ -160,13 +178,11 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
       parentComponent = getOrCreateComponent(
         categoryMap,
         category,
-        parentName,
+        value,
         source,
       );
       childComponent = null;
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-sub-name')) {
-      flushBlocks();
+    } else if (tag === '@sg-sub-name') {
       if (!parentComponent) {
         pushWarning(
           warnings,
@@ -175,7 +191,7 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
         );
       }
       childComponent = {
-        subName: line.substring('@sg-sub-name'.length).trim(),
+        subName: value,
       };
       if (source) {
         childComponent.source = source;
@@ -183,21 +199,13 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
       if (parentComponent) {
         parentComponent.children.push(childComponent);
       }
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-description')) {
-      flushBlocks();
-      if (childComponent) {
-        childComponent.description = line
-          .substring('@sg-description'.length)
-          .trim();
-      } else if (parentComponent) {
-        parentComponent.description = line
-          .substring('@sg-description'.length)
-          .trim();
+    } else if (tag === '@sg-description') {
+      const target = childComponent || parentComponent;
+      if (target) {
+        target.description = value;
+        descriptionTarget = target;
       }
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-example')) {
-      flushBlocks();
+    } else if (tag === '@sg-example') {
       if (!childComponent && !parentComponent) {
         pushWarning(
           warnings,
@@ -205,10 +213,8 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
           warningSource,
         );
       }
-      currentExample.push(line.substring('@sg-example'.length).trim());
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-markup')) {
-      flushBlocks();
+      currentExample.push(value);
+    } else if (tag === '@sg-markup') {
       if (!childComponent && !parentComponent) {
         pushWarning(
           warnings,
@@ -216,24 +222,14 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
           warningSource,
         );
       }
-      currentMarkup.push(line.substring('@sg-markup'.length).trim());
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-variant')) {
-      flushBlocks();
-      if (childComponent) {
-        childComponent.variants = childComponent.variants || [];
-        childComponent.variants.push(
-          line.substring('@sg-variant'.length).trim(),
-        );
-      } else if (parentComponent) {
-        parentComponent.variants = parentComponent.variants || [];
-        parentComponent.variants.push(
-          line.substring('@sg-variant'.length).trim(),
-        );
+      currentMarkup.push(value);
+    } else if (tag === '@sg-variant') {
+      const target = childComponent || parentComponent;
+      if (target) {
+        target.variants = target.variants || [];
+        target.variants.push(value);
       }
-      inTableBlock = false;
-    } else if (line.startsWith('@sg-table')) {
-      flushBlocks();
+    } else if (tag === '@sg-table') {
       if (!childComponent && !parentComponent) {
         pushWarning(
           warnings,
@@ -242,17 +238,28 @@ export function parseStyleguideComment(comment, categoryMap, options = {}) {
         );
       }
       inTableBlock = true;
-    } else if (inTableBlock) {
-      currentTable.push(line);
     } else if (line.startsWith('@sg-')) {
       flushBlocks();
-    } else {
-      if (currentExample.length > 0) {
-        currentExample.push(line);
-      } else if (currentMarkup.length > 0) {
-        currentMarkup.push(line);
+      descriptionTarget = null;
+      pushWarning(
+        warnings,
+        `unknown tag "${line.split(/\s+/)[0]}" was ignored`,
+        warningSource,
+      );
+    } else if (inTableBlock) {
+      currentTable.push(line);
+    } else if (currentExample.length > 0) {
+      currentExample.push(line);
+    } else if (currentMarkup.length > 0) {
+      currentMarkup.push(line);
+    } else if (descriptionTarget) {
+      if (line === '') {
+        descriptionTarget = null;
+      } else {
+        descriptionTarget.description = descriptionTarget.description
+          ? `${descriptionTarget.description}\n${line}`
+          : line;
       }
-      inTableBlock = false;
     }
   }
 
@@ -369,6 +376,14 @@ export async function collectStyleguideData(options = {}) {
   const categoryMap = {};
   const warnings = mergedOptions.warnings || [];
 
+  if (files.length === 0) {
+    pushWarning(
+      warnings,
+      `no files matched input "${mergedOptions.input}"`,
+      undefined,
+    );
+  }
+
   for (const file of files) {
     const absolutePath = path.resolve(mergedOptions.cwd, file);
     const content = await fs.readFile(absolutePath, 'utf8');
@@ -393,6 +408,8 @@ export function createOutputFiles(categories, options = {}) {
     ...options,
   };
 
+  const seenPaths = new Map();
+
   return Object.entries(categories).map(([category, components]) => {
     const safeCategory = slugify(category) || 'default';
     const fileName = `${mergedOptions.prefix}${safeCategory}.json`;
@@ -401,6 +418,16 @@ export function createOutputFiles(categories, options = {}) {
       mergedOptions.output,
       fileName,
     );
+
+    if (seenPaths.has(filePath)) {
+      pushWarning(
+        mergedOptions.warnings,
+        `output file collision: categories "${seenPaths.get(filePath)}" and "${category}" both write ${fileName}`,
+        undefined,
+      );
+    } else {
+      seenPaths.set(filePath, category);
+    }
 
     return {
       category,
@@ -432,7 +459,10 @@ export async function writeStyleguideData(categories, options = {}) {
 
 export async function generateStyleguideData(options = {}) {
   const collected = await collectStyleguideData(options);
-  const outputFiles = await writeStyleguideData(collected.categories, options);
+  const outputFiles = await writeStyleguideData(collected.categories, {
+    ...options,
+    warnings: collected.warnings,
+  });
 
   return {
     ...collected,

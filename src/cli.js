@@ -17,6 +17,7 @@ Options:
   --config <file>    Load options from a JS config file
   --source           Include source file and line in output
   --dry-run          Print files that would be written without writing
+  --strict           Exit with code 1 when warnings are reported
   --help             Show this help
 
 Example:
@@ -33,6 +34,8 @@ function parseArgs(argv) {
       options.help = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--strict') {
+      options.strict = true;
     } else if (arg === '--source') {
       options.includeSource = true;
     } else if (
@@ -88,6 +91,8 @@ async function main() {
     ...config,
     ...optionsFromCli,
   };
+  const strict = Boolean(options.strict);
+  delete options.strict;
   const result = await generateStyleguideData(options);
 
   for (const warning of result.warnings) {
@@ -110,6 +115,11 @@ async function main() {
   console.log(
     `parsed ${result.files.length} files, generated ${result.outputFiles.length} files`,
   );
+
+  if (strict && result.warnings.length > 0) {
+    console.error(`[strict] ${result.warnings.length} warning(s) reported`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {
